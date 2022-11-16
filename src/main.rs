@@ -1,5 +1,6 @@
 // Author: Grant Duchars
-use mysql::prelude::*;
+mod dbmgmt;
+use dbmgmt::*;
 use mysql::*;
 use rpassword::prompt_password;
 use std::io::{stdin, stdout, Write};
@@ -25,6 +26,8 @@ fn main() {
 
     println!("You are now connected to {hostname} using {database} database.");
 
+    setup_database(&mut conn).unwrap();
+
     loop {
         let input = prompt_input(">>> ").unwrap();
         let input: Vec<&str> = input.split(" ").collect();
@@ -39,7 +42,7 @@ fn main() {
     }
 }
 
-fn prompt_input(prompt: &str) -> std::io::Result<String> {
+fn prompt_input(prompt: &str) -> Result<String> {
     print!("{prompt}");
     stdout().flush()?;
     let mut input = String::new();
