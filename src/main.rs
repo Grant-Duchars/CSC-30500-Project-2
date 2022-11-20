@@ -32,7 +32,7 @@ fn main() {
         let input = prompt_input(">>> ").unwrap();
         let input: Vec<&str> = input.split(" ").collect();
         match input[0] {
-            "a" => todo!(),
+            "a" => insert_into_database(&mut conn, input).unwrap(),
             "d" => todo!(),
             "l" => todo!(),
             "t" => todo!(),
@@ -50,4 +50,16 @@ fn prompt_input(prompt: &str) -> Result<String> {
     let len = input.trim_end_matches(&['\r', '\n']).len();
     input.truncate(len);
     Ok(input)
+}
+
+fn insert_into_database(conn: &mut PooledConn, input: Vec<&str>) -> Result<()> {
+    match input[1] {
+        "c" => insert_course(conn, Course{prefix: input[2], number: input[3], title: input[4], credits: input[5]})?,
+        "g" => insert_grade(conn, Grade{letter: input[2], value: input[3]})?,
+        "m" => insert_semester(conn, Semester{code: input[2], year: input[3], description: input[4]})?,
+        "s" => insert_student(conn, Student{lname: input[2], fname: input[3], phone: input[4]})?,
+        "t" => insert_taken_course(conn, TakenCourse{student_lname: input[2], student_fname: input[3], course_prefix: input[4], course_number: input[5], grade_letter: input[6], semester_code: input[7]})?,
+        _ => println!("Error: Invalid subcommand. Valid subcommands are (c)ourse, (g)rade, se(m)ster, (s)tudent, (t)aken course"),
+    }
+    Ok(())
 }
