@@ -3,11 +3,9 @@ mod dbmgmt;
 use dbmgmt::*;
 use mysql::*;
 use rpassword::prompt_password;
-use std::io::{stdin, stdout, Write};
+use std::io::{stdin, stdout, ErrorKind, Write};
 
 // Need to implement:
-// Add(Class, Grade, Semester, Student, Taken Class),
-// List(Class, Grade, Semester, Student, Taken Class),
 // Transcript
 // Quit
 
@@ -24,20 +22,44 @@ fn main() {
     let pool = Pool::new(url.as_str()).unwrap();
     let mut conn = pool.get_conn().unwrap();
 
-    println!("You are now connected to {hostname} using {database} database.");
+    // Notify user that the connection has been made
+    println!("\nYou are now connected to '{hostname}' using '{database}' database.");
 
+    // Create the neccessary database tables if they do not exist
     setup_database(&mut conn).unwrap();
 
+    // Main loop. Prompts user for input and terminates when user inputs "q"
     loop {
         let input = prompt_input(">>> ").unwrap();
         let input: Vec<&str> = input.split(" ").collect();
+        // Check what command the user wants to run
         match input[0] {
-            "a" => insert_into_database(&mut conn, input).unwrap(),
-            "d" => todo!(),
-            "l" => todo!(),
+            "a" => {
+                // Run the insert and check if any mysql errors were thrown
+                match insert_into_database(&mut conn, input) {
+                Err(e) => {
+                    match e {
+                    mysql::Error::MySqlError(my_sql_error) => {
+                        if my_sql_error.code == 1062 {
+                            println!("Error: Unable to add item to database. Duplicate entry found.\n");
+                        } else {
+                            panic!("Unhandled MySqlError");
+                        }
+                    }
+                    mysql::Error::IoError(error) => {
+                        if error.kind() == ErrorKind::Other {
+                            println!("{error}");
+                        }
+                    },
+                    _ => panic!(),
+                }},
+                Ok(item) => println!("Successfully inserted '{item}' into database.\n")
+            }}
+            "d" => delete_from_database(&mut conn, input).unwrap(),
+            "l" => list_from_database(&mut conn, input).unwrap(),
             "t" => todo!(),
             "q" => return,
-            _ => println!("Error: Invalid command. Valid commands are (a)dd, (d)elete, (l)ist, (t)ranscript, (q)uit."),
+            _ => println!("Error: Invalid command. Valid commands are (a)dd, (d)elete, (l)ist, (t)ranscript, (q)uit.\n"),
         }
     }
 }
@@ -50,16 +72,4 @@ fn prompt_input(prompt: &str) -> Result<String> {
     let len = input.trim_end_matches(&['\r', '\n']).len();
     input.truncate(len);
     Ok(input)
-}
-
-fn insert_into_database(conn: &mut PooledConn, input: Vec<&str>) -> Result<()> {
-    match input[1] {
-        "c" => insert_course(conn, Course{prefix: input[2], number: input[3], title: input[4], credits: input[5]})?,
-        "g" => insert_grade(conn, Grade{letter: input[2], value: input[3]})?,
-        "m" => insert_semester(conn, Semester{code: input[2], year: input[3], description: input[4]})?,
-        "s" => insert_student(conn, Student{lname: input[2], fname: input[3], phone: input[4]})?,
-        "t" => insert_taken_course(conn, TakenCourse{student_lname: input[2], student_fname: input[3], course_prefix: input[4], course_number: input[5], grade_letter: input[6], semester_code: input[7]})?,
-        _ => println!("Error: Invalid subcommand. Valid subcommands are (c)ourse, (g)rade, se(m)ster, (s)tudent, (t)aken course"),
-    }
-    Ok(())
 }
