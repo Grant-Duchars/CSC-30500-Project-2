@@ -23,7 +23,7 @@ fn main() {
     let mut conn = pool.get_conn().unwrap();
 
     // Notify user that the connection has been made
-    println!("\nYou are now connected to '{hostname}' using '{database}' database.");
+    println!("\nYou are now connected to '{hostname}' using '{database}' database.\n");
 
     // Create the neccessary database tables if they do not exist
     setup_database(&mut conn).unwrap();
@@ -37,27 +37,46 @@ fn main() {
             "a" => {
                 // Run the insert and check if any mysql errors were thrown
                 match insert_into_database(&mut conn, input) {
-                Err(e) => {
-                    match e {
-                    mysql::Error::MySqlError(my_sql_error) => {
-                        if my_sql_error.code == 1062 {
-                            println!("Error: Unable to add item to database. Duplicate entry found.\n");
-                        } else {
-                            panic!("Unhandled MySqlError");
-                        }
-                    }
-                    mysql::Error::IoError(error) => {
-                        if error.kind() == ErrorKind::Other {
-                            println!("{error}");
+                    Err(e) => {
+                        match e {
+                            mysql::Error::MySqlError(my_sql_error) => {
+                                if my_sql_error.code == 1062 {
+                                    println!("Error: Unable to add item to database. Duplicate entry found.\n");
+                                }
+                            }
+                            mysql::Error::IoError(error) => {
+                                if error.kind() == ErrorKind::Other {
+                                    println!("{error}");
+                                }
+                            },
+                            _ => panic!(),
                         }
                     },
-                    _ => panic!(),
-                }},
-                Ok(item) => println!("Successfully inserted '{item}' into database.\n")
-            }}
+                    Ok(item) => println!("Successfully inserted '{item}' into database.\n")
+                }
+            }
             "d" => delete_from_database(&mut conn, input).unwrap(),
             "l" => list_from_database(&mut conn, input).unwrap(),
-            "t" => todo!(),
+            "t" => {
+                match transcript(&mut conn, input) {
+                    Err(e) => {
+                        match e {
+                            mysql::Error::MySqlError(my_sql_error) => {
+                                if my_sql_error.code == 1062 {
+                                    println!("Error: Unable to add item to database. Duplicate entry found.\n");
+                                }
+                            }
+                            mysql::Error::IoError(error) => {
+                                if error.kind() == ErrorKind::Other {
+                                    println!("{error}");
+                                }
+                            },
+                            _ => panic!(),
+                        }
+                    },
+                    Ok(_) => ()
+                }
+            }
             "q" => return,
             _ => println!("Error: Invalid command. Valid commands are (a)dd, (d)elete, (l)ist, (t)ranscript, (q)uit.\n"),
         }

@@ -1,7 +1,7 @@
 // Author: Grant Duchars
 use mysql::prelude::*;
 use mysql::*;
-use std::io::{Error, ErrorKind};
+use std::{io::{Error, ErrorKind}, cmp::Ordering};
 
 struct Course {
     pub prefix: String,
@@ -15,10 +15,25 @@ struct Grade {
     pub value: String,
 }
 
+#[derive(PartialEq, Eq, PartialOrd)]
 struct Semester {
     pub code: String,
     pub year: String,
     pub description: String,
+}
+
+impl Ord for Semester {
+    fn cmp(&self, other: &Self) -> Ordering {
+        let year_int = self.year.parse::<i32>().unwrap();
+        let other_year_int = other.year.parse::<i32>().unwrap();
+        if year_int < other_year_int {
+            Ordering::Less
+        } else if year_int > other_year_int {
+            Ordering::Greater
+        } else {
+            Ordering::Equal
+        }
+    }
 }
 
 struct Student {
@@ -40,22 +55,22 @@ pub fn setup_database(conn: &mut PooledConn) -> Result<()> {
     conn.query_drop(
         r"CREATE TABLE IF NOT EXISTS Course (
         Prefix nvarchar(5) not null,
-        Number int not null,
+        Number nvarchar(5) not null,
         Title nvarchar(32) not null,
-        Credits int not null,
+        Credits nvarchar(5) not null,
         PRIMARY KEY (Prefix, Number))",
     )?;
     conn.query_drop(
         r"CREATE TABLE IF NOT EXISTS Grade (
         Letter nvarchar(5) not null,
-        Value float not null,
+        Value nvarchar(5) not null,
         PRIMARY KEY (Letter))",
     )?;
     conn.query_drop(
         r"CREATE TABLE IF NOT EXISTS Semester (
-        Code nvarchar(5) not null,
-        Year int not null,
-        Description varchar(10) not null,
+        Code nvarchar(4) not null,
+        Year nvarchar(4) not null,
+        Description varchar(6) not null,
         PRIMARY KEY (Code))",
     )?;
     conn.query_drop(
@@ -70,7 +85,7 @@ pub fn setup_database(conn: &mut PooledConn) -> Result<()> {
         StudentLName nvarchar(32) not null,
         StudentFName nvarchar(32) not null,
         CoursePrefix nvarchar(5) not null,
-        CourseNumber int not null,
+        CourseNumber nvarchar(5) not null,
         GradeLetter nvarchar(5) not null,
         SemesterCode nvarchar(5) not null,
         PRIMARY KEY (StudentLName, StudentFName, CoursePrefix, CourseNumber, GradeLetter, SemesterCode))",
@@ -298,6 +313,27 @@ fn insert_student(conn: &mut PooledConn, student: Student) -> Result<String> {
 }
 
 fn insert_taken_course(conn: &mut PooledConn, taken_course: TakenCourse) -> Result<String> {
+    if !search_student(conn, &taken_course)? {
+        return Err(mysql::Error::IoError(Error::new(
+            ErrorKind::Other,
+            "Error: Unable to add item to database. Given student does not exist.\n",
+        )));
+    } else if !search_course(conn, &taken_course)? {
+        return Err(mysql::Error::IoError(Error::new(
+            ErrorKind::Other,
+            "Error: Unable to add item to database. Given course does not exist.\n",
+        )));
+    } else if !search_grade(conn, &taken_course)? {
+        return Err(mysql::Error::IoError(Error::new(
+            ErrorKind::Other,
+            "Error: Unable to add item to database. Given grade does not exist.\n",
+        )));
+    } else if !search_semester(conn, &taken_course)? {
+        return Err(mysql::Error::IoError(Error::new(
+            ErrorKind::Other,
+            "Error: Unable to add item to database. Given semester does not exist.\n",
+        )));
+    }
     let stmt = conn.prep(
         r"INSERT INTO TakenCourse (
             StudentLName, 
@@ -328,6 +364,74 @@ fn insert_taken_course(conn: &mut PooledConn, taken_course: TakenCourse) -> Resu
         taken_course.grade_letter,
         taken_course.semester_code,
     ))
+}
+
+fn search_student(conn: &mut PooledConn, taken_course: &TakenCourse) -> Result<bool> {
+    let stmt = conn.prep("SELECT * FROM Student WHERE Student.LName = ? AND Student.FName = ?")?;
+    let query = conn.exec_map(stmt,
+        (&taken_course.student_lname, &taken_course.student_fname), 
+        |(lname, fname, phone)|
+        Student {
+            lname,
+            fname, 
+            phone
+        }
+    )?;
+    if query.is_empty() {
+        return Ok(false);
+    }
+    Ok(true)
+}
+
+fn search_course(conn: &mut PooledConn, taken_course: &TakenCourse) -> Result<bool> {
+    let stmt = conn.prep("SELECT * FROM Course WHERE Course.Prefix = ? AND Course.Number = ?")?;
+    let query = conn.exec_map(stmt,
+        (&taken_course.course_prefix, &taken_course.course_number), 
+        |(prefix, number, title, credits)|
+        Course {
+            prefix,
+            number,
+            title,
+            credits
+        }
+    )?;
+    if query.is_empty() {
+        return Ok(false);
+    }
+    Ok(true)
+}
+
+fn search_grade(conn: &mut PooledConn, taken_course: &TakenCourse) -> Result<bool> {
+    let stmt = conn.prep("SELECT * FROM Grade WHERE Grade.Letter = ?")?;
+    let query = conn.exec_map(stmt,
+        (&taken_course.grade_letter,), 
+        |(letter, value)|
+        Grade {
+            letter,
+            value,
+        }
+    )?;
+    if query.is_empty() {
+        return Ok(false);
+    }
+    Ok(true)
+}
+
+fn search_semester(conn: &mut PooledConn, taken_course: &TakenCourse) ->Result<bool> {
+    let stmt = conn.prep("SELECT * FROM Semester WHERE Semester.Code = ?")?;
+    let query = conn.exec_map(stmt,
+        (&taken_course.semester_code,), 
+        |(code, year, description)|
+        Semester {
+            code,
+            year,
+            description
+        }
+    )?;
+    if query.is_empty() {
+        return Ok(false);
+    }
+    Ok(true)
 }
 // End insert functions
 
@@ -390,7 +494,8 @@ pub fn list_from_database(conn: &mut PooledConn, input: Vec<&str>) -> Result<()>
 fn list_courses(conn: &mut PooledConn) -> Result<()> {
     let query = conn.query_map(
         r"SELECT * FROM Course",
-        |(prefix, number, title, credits)| Course {
+        |(prefix, number, title, credits)|
+        Course {
             prefix,
             number,
             title,
@@ -498,3 +603,87 @@ fn list_taken_courses(conn: &mut PooledConn) -> Result<()> {
     Ok(())
 }
 // End list functions
+pub fn transcript(conn: &mut PooledConn, input: Vec<&str>) -> Result<()> {
+    print_transcript(conn, 
+        Student {
+            lname: match input.get(1) {
+                Some(item) => item.to_string(),
+                None => return Err(mysql::Error::IoError(Error::new(
+                        ErrorKind::Other,
+                        "Error: Unable to print transcript. No student supplied.\n",
+                    )))
+            },
+            fname: match input.get(2) {
+                Some(item) => item.to_string(),
+                None => return Err(mysql::Error::IoError(Error::new(
+                    ErrorKind::Other, 
+                    "Error: Unable to print transcript. Student's first name not supplied.\n"
+                    )))
+            },
+            phone: String::new(),
+        },
+    )?;
+    Ok(())
+}
+
+fn print_transcript(conn: &mut PooledConn, student: Student) -> Result<()> {
+    let stmt = conn.prep(
+        r"SELECT * FROM TakenCourse
+        WHERE TakenCourse.StudentLName = ? AND TakenCourse.StudentFName = ?"
+    )?;
+    let taken_courses = conn.exec_map(stmt, 
+        (&student.lname, &student.fname), 
+        |(student_lname, student_fname, course_prefix, course_number, grade_letter, semester_code)| 
+        TakenCourse {
+            student_lname,
+            student_fname,
+            course_prefix,
+            course_number,
+            grade_letter,
+            semester_code,
+        }
+    )?;
+    if taken_courses.is_empty() {
+        println!("Error: Unable to print transcript. Given student either does not exist or has not taken and courses yet.\n");
+        return Ok(());
+    }
+    let mut courses: Vec<Course> = Vec::new();
+    let mut grades: Vec<Grade> = Vec::new();
+    let mut semesters: Vec<Semester> = Vec::new();
+    for taken_course in taken_courses.iter() {
+        courses.append(&mut conn.exec_map(r"SELECT * FROM Course WHERE Course.Prefix = ? AND Course.Number = ?", 
+            (&taken_course.course_prefix, &taken_course.course_number), 
+            |(prefix, number, title, credits)| Course {prefix, number, title, credits})?);
+        grades.append(&mut conn.exec_map(r"SELECT * FROM Grade WHERE Grade.Letter = ?", 
+            (&taken_course.grade_letter,), 
+            |(letter, value)| Grade {letter, value})?);
+        semesters.append(&mut conn.exec_map(r"SELECT * FROM Semester WHERE Semester.Code = ?", 
+        (&taken_course.semester_code,), 
+            |(code, year, description)| Semester {code, year, description})?);
+    }
+    semesters.sort();
+    let mut sum_credits = 0;
+    let mut sum_grade_value = 0.0;
+    let num_courses = taken_courses.len() as f32;
+    for semester in semesters.iter() {
+        println!("============ Semester: {:<6} {} ============", semester.description, semester.year);
+        for taken_course in taken_courses.iter() {
+            if taken_course.semester_code == semester.code {
+                for course in courses.iter() {
+                    if course.prefix == taken_course.course_prefix && course.number == taken_course.course_number {
+                        for grade in grades.iter() {
+                            if grade.letter == taken_course.grade_letter {
+                                sum_credits = sum_credits + course.credits.parse::<i32>().unwrap();
+                                sum_grade_value = sum_grade_value + grade.value.parse::<f32>().unwrap();
+                                println!("{}{} {} ({}) {}", course.prefix, course.number, course.title, course.credits, taken_course.grade_letter);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    println!("  STUDENT HOURS COMPLETED: {sum_credits}");
+    println!("  STUDENT GPA: {}\n", sum_grade_value/num_courses);
+    Ok(())
+}
