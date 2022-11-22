@@ -57,26 +57,7 @@ fn main() {
             }
             "d" => delete_from_database(&mut conn, input).unwrap(),
             "l" => list_from_database(&mut conn, input).unwrap(),
-            "t" => {
-                match transcript(&mut conn, input) {
-                    Err(e) => {
-                        match e {
-                            mysql::Error::MySqlError(my_sql_error) => {
-                                if my_sql_error.code == 1062 {
-                                    println!("Error: Unable to add item to database. Duplicate entry found.\n");
-                                }
-                            }
-                            mysql::Error::IoError(error) => {
-                                if error.kind() == ErrorKind::Other {
-                                    println!("{error}");
-                                }
-                            },
-                            _ => panic!(),
-                        }
-                    },
-                    Ok(_) => ()
-                }
-            }
+            "t" => transcript(&mut conn, input).unwrap(),
             "q" => return,
             _ => println!("Error: Invalid command. Valid commands are (a)dd, (d)elete, (l)ist, (t)ranscript, (q)uit.\n"),
         }

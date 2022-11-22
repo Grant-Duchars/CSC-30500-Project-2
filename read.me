@@ -1,0 +1,18 @@
+Grant Duchars
+
+11/21/2022
+
+Developed on Linux
+
+You will need to use the rust compiler to compile the project. The easiest way to install the compiler is to install rustup.
+Once rust up is done you can compile the project by running ( cargo build --release ) while in the project root directory.
+You can then run the file it produced in the target directory. You can also run the command ( cargo run --release ) while in
+the project root directory to build and run the project.
+
+I did not find any bugs when running my program but there may be issues with the mysql library when you go to build the project.
+The library needs open-ssl to be installed to be able to connect to the mysql server. Make sure open-ssl is installed and can be
+located.
+
+To finish the project I basically ported over my project 1 to rust and started building off of it. I read through the mysql library
+documentation that I am using to see what the best way to query the database was and most of the examples used structs to pass into
+the query.

@@ -257,11 +257,15 @@ pub fn insert_into_database(conn: &mut PooledConn, input: Vec<&str>) -> Result<S
 }
 
 fn insert_course(conn: &mut PooledConn, course: Course) -> Result<String> {
-    let stmt = conn.prep(
+    // Start a transaction
+    let mut transaction = conn.start_transaction(TxOpts::default())?;
+    // Make a prepared statement
+    let stmt = transaction.prep(
         r"INSERT INTO Course (Prefix, Number, Title, Credits)
         VALUES (?, ?, ?, ?)",
     )?;
-    conn.exec_drop(
+    // Execute query in prepared statement with given variables
+    transaction.exec_drop(
         stmt,
         (
             &course.prefix,
@@ -270,6 +274,9 @@ fn insert_course(conn: &mut PooledConn, course: Course) -> Result<String> {
             &course.credits,
         ),
     )?;
+    // Commit the transaction
+    transaction.commit()?;
+    // Send the OK! that the item was inserted
     Ok(format!(
         "{} {} {} {}",
         course.prefix, course.number, course.title, course.credits
@@ -277,23 +284,37 @@ fn insert_course(conn: &mut PooledConn, course: Course) -> Result<String> {
 }
 
 fn insert_grade(conn: &mut PooledConn, grade: Grade) -> Result<String> {
-    let stmt = conn.prep(
+    // Start a transaction
+    let mut transaction = conn.start_transaction(TxOpts::default())?;
+    // Make a prepared statement
+    let stmt = transaction.prep(
         r"INSERT INTO Grade (Letter, Value)
         VALUES (?, ?)",
     )?;
-    conn.exec_drop(stmt, (&grade.letter, &grade.value))?;
+    // Execute query in prepared statement with given variables
+    transaction.exec_drop(stmt, (&grade.letter, &grade.value))?;
+    // Commit the transaction
+    transaction.commit()?;
+    // Send the OK! that the item was inserted
     Ok(format!("{} {}", grade.letter, grade.value))
 }
 
 fn insert_semester(conn: &mut PooledConn, semester: Semester) -> Result<String> {
-    let stmt = conn.prep(
+    // Start a transaction
+    let mut transaction = conn.start_transaction(TxOpts::default())?;
+    // Make a prepared statement
+    let stmt = transaction.prep(
         r"INSERT INTO Semester (Code, Year, Description)
         VALUES (?, ?, ?)",
     )?;
-    conn.exec_drop(
+    // Execute query in prepared statement with given variables
+    transaction.exec_drop(
         stmt,
         (&semester.code, &semester.year, &semester.description),
     )?;
+    // Commit the transaction
+    transaction.commit()?;
+    // Send the OK! that the item was inserted
     Ok(format!(
         "{} {} {}",
         semester.code, semester.year, semester.description
@@ -301,11 +322,18 @@ fn insert_semester(conn: &mut PooledConn, semester: Semester) -> Result<String> 
 }
 
 fn insert_student(conn: &mut PooledConn, student: Student) -> Result<String> {
-    let stmt = conn.prep(
+    // Start a transaction
+    let mut transaction = conn.start_transaction(TxOpts::default())?;
+    // Make a prepared statement
+    let stmt = transaction.prep(
         r"INSERT INTO Student (LName, FName, Phone)
         VALUES (?, ?, ?)",
     )?;
-    conn.exec_drop(stmt, (&student.lname, &student.fname, &student.phone))?;
+    // Execute query in prepared statement with given variables
+    transaction.exec_drop(stmt, (&student.lname, &student.fname, &student.phone))?;
+    // Commit the transaction
+    transaction.commit()?;
+    // Send the OK! that the item was inserted
     Ok(format!(
         "{} {} {}",
         student.lname, student.fname, student.phone
@@ -313,28 +341,35 @@ fn insert_student(conn: &mut PooledConn, student: Student) -> Result<String> {
 }
 
 fn insert_taken_course(conn: &mut PooledConn, taken_course: TakenCourse) -> Result<String> {
+    // Check if the database contains the given student
     if !search_student(conn, &taken_course)? {
         return Err(mysql::Error::IoError(Error::new(
             ErrorKind::Other,
             "Error: Unable to add item to database. Given student does not exist.\n",
         )));
+    // Check if the database contains the given course
     } else if !search_course(conn, &taken_course)? {
         return Err(mysql::Error::IoError(Error::new(
             ErrorKind::Other,
             "Error: Unable to add item to database. Given course does not exist.\n",
         )));
+    // Check if the database contains the given grade
     } else if !search_grade(conn, &taken_course)? {
         return Err(mysql::Error::IoError(Error::new(
             ErrorKind::Other,
             "Error: Unable to add item to database. Given grade does not exist.\n",
         )));
+    // Check if the databases contains the given semester
     } else if !search_semester(conn, &taken_course)? {
         return Err(mysql::Error::IoError(Error::new(
             ErrorKind::Other,
             "Error: Unable to add item to database. Given semester does not exist.\n",
         )));
     }
-    let stmt = conn.prep(
+    // Start a transaction
+    let mut transaction = conn.start_transaction(TxOpts::default())?;
+    // Make a prepared statement
+    let stmt = transaction.prep(
         r"INSERT INTO TakenCourse (
             StudentLName, 
             StudentFName, 
@@ -344,7 +379,8 @@ fn insert_taken_course(conn: &mut PooledConn, taken_course: TakenCourse) -> Resu
             SemesterCode)
         VALUES (?, ?, ?, ?, ?, ?)",
     )?;
-    conn.exec_drop(
+    // Execute query in prepared statement with given variables
+    transaction.exec_drop(
         stmt,
         (
             &taken_course.student_lname,
@@ -355,6 +391,9 @@ fn insert_taken_course(conn: &mut PooledConn, taken_course: TakenCourse) -> Resu
             &taken_course.semester_code,
         ),
     )?;
+    // Commit the transaction
+    transaction.commit()?;
+    // Send the OK! that the item was inserted
     Ok(format!(
         "{} {} {} {} {} {}",
         taken_course.student_lname,
@@ -367,7 +406,9 @@ fn insert_taken_course(conn: &mut PooledConn, taken_course: TakenCourse) -> Resu
 }
 
 fn search_student(conn: &mut PooledConn, taken_course: &TakenCourse) -> Result<bool> {
+    // Make a prepared statement
     let stmt = conn.prep("SELECT * FROM Student WHERE Student.LName = ? AND Student.FName = ?")?;
+    // Execute query in prepared statement with given variables and store results in vector
     let query = conn.exec_map(stmt,
         (&taken_course.student_lname, &taken_course.student_fname), 
         |(lname, fname, phone)|
@@ -377,6 +418,7 @@ fn search_student(conn: &mut PooledConn, taken_course: &TakenCourse) -> Result<b
             phone
         }
     )?;
+    // Check if any results were found
     if query.is_empty() {
         return Ok(false);
     }
@@ -384,7 +426,9 @@ fn search_student(conn: &mut PooledConn, taken_course: &TakenCourse) -> Result<b
 }
 
 fn search_course(conn: &mut PooledConn, taken_course: &TakenCourse) -> Result<bool> {
+    // Make a prepared statement
     let stmt = conn.prep("SELECT * FROM Course WHERE Course.Prefix = ? AND Course.Number = ?")?;
+    // Execute query in prepared statement with given variables and store results in vector
     let query = conn.exec_map(stmt,
         (&taken_course.course_prefix, &taken_course.course_number), 
         |(prefix, number, title, credits)|
@@ -395,6 +439,7 @@ fn search_course(conn: &mut PooledConn, taken_course: &TakenCourse) -> Result<bo
             credits
         }
     )?;
+    // Check if any results were found
     if query.is_empty() {
         return Ok(false);
     }
@@ -402,7 +447,9 @@ fn search_course(conn: &mut PooledConn, taken_course: &TakenCourse) -> Result<bo
 }
 
 fn search_grade(conn: &mut PooledConn, taken_course: &TakenCourse) -> Result<bool> {
+    // Make a prepared statement
     let stmt = conn.prep("SELECT * FROM Grade WHERE Grade.Letter = ?")?;
+    // Execute query in prepared statement with given variables and store results in vector
     let query = conn.exec_map(stmt,
         (&taken_course.grade_letter,), 
         |(letter, value)|
@@ -411,6 +458,7 @@ fn search_grade(conn: &mut PooledConn, taken_course: &TakenCourse) -> Result<boo
             value,
         }
     )?;
+    // Check if any results were found
     if query.is_empty() {
         return Ok(false);
     }
@@ -418,7 +466,9 @@ fn search_grade(conn: &mut PooledConn, taken_course: &TakenCourse) -> Result<boo
 }
 
 fn search_semester(conn: &mut PooledConn, taken_course: &TakenCourse) ->Result<bool> {
+    // Make a prepared statement
     let stmt = conn.prep("SELECT * FROM Semester WHERE Semester.Code = ?")?;
+    // Execute query in prepared statement with given variables and store results in vector
     let query = conn.exec_map(stmt,
         (&taken_course.semester_code,), 
         |(code, year, description)|
@@ -428,6 +478,7 @@ fn search_semester(conn: &mut PooledConn, taken_course: &TakenCourse) ->Result<b
             description
         }
     )?;
+    // Check if any results were found
     if query.is_empty() {
         return Ok(false);
     }
@@ -441,13 +492,15 @@ pub fn delete_from_database(conn: &mut PooledConn, input: Vec<&str>) -> Result<(
     delete_student(
         conn,
         Student {
+            // Check if user actually entered something
             lname: match input.get(2) {
                 Some(item) => item.to_string(),
                 None => return Err(mysql::Error::IoError(Error::new(
                         ErrorKind::Other,
                         "Error: Unable to delete student. No student supplied.\n",
-                    )))
+                )))
             },
+            // Check if user actually entered something
             fname: match input.get(3) {
                 Some(item) => item.to_string(),
                 None => return Err(mysql::Error::IoError(Error::new(
@@ -462,17 +515,24 @@ pub fn delete_from_database(conn: &mut PooledConn, input: Vec<&str>) -> Result<(
 }
 
 fn delete_student(conn: &mut PooledConn, student: Student) -> Result<()> {
-    let stmt = conn.prep(
+    // Start a transaction
+    let mut transaction = conn.start_transaction(TxOpts::default())?;
+    // Make a prepared statement
+    let stmt = transaction.prep(
         r"DELETE FROM Student
         WHERE Student.LName = ? AND Student.FName = ?",
     )?;
-    conn.exec_drop(stmt, (&student.lname, &student.fname))?;
-    let stmt = conn.prep(
+    // Execute query in prepared statement with given variables
+    transaction.exec_drop(stmt, (&student.lname, &student.fname))?;
+    // Make a prepared statement
+    let stmt = transaction.prep(
         r"DELETE FROM TakenCourse
         WHERE TakenCourse.StudentLName = ? AND TakenCourse.StudentFName = ?",
     )?;
-    conn.exec_drop(stmt, (student.lname, student.fname))?;
-    Ok(())
+    // Execute query in prepared statement with given variables
+    transaction.exec_drop(stmt, (student.lname, student.fname))?;
+    // Commit the transaction
+    transaction.commit()
 }
 // End delete functions
 
@@ -492,6 +552,7 @@ pub fn list_from_database(conn: &mut PooledConn, input: Vec<&str>) -> Result<()>
 }
 
 fn list_courses(conn: &mut PooledConn) -> Result<()> {
+    // Select all rows from table
     let query = conn.query_map(
         r"SELECT * FROM Course",
         |(prefix, number, title, credits)|
@@ -502,9 +563,11 @@ fn list_courses(conn: &mut PooledConn) -> Result<()> {
             credits,
         },
     )?;
+    // Print out header for table
     println!("+--------+--------+----------------------------------+---------+");
     println!("| Prefix | Number | Title                            | Credits |");
     println!("+--------+--------+----------------------------------+---------+");
+    // Iterate through rows from query and print out styled table
     for item in query.iter() {
         println!(
             "| {:<6} | {:>6} | {:<32} | {:>7} |",
@@ -516,13 +579,16 @@ fn list_courses(conn: &mut PooledConn) -> Result<()> {
 }
 
 fn list_grades(conn: &mut PooledConn) -> Result<()> {
+    // Select all rows from table
     let query = conn.query_map(r"SELECT * FROM Grade", |(letter, value)| Grade {
         letter,
         value,
     })?;
+    // Print out header for table
     println!("+------+-------+");
     println!("+ Type | Value |");
     println!("+------+-------+");
+    // Iterate through rows from query and print out styled table
     for item in query.iter() {
         println!("| {:<4} | {:>5} |", item.letter, item.value);
     }
@@ -531,6 +597,7 @@ fn list_grades(conn: &mut PooledConn) -> Result<()> {
 }
 
 fn list_semesters(conn: &mut PooledConn) -> Result<()> {
+    // Select all rows from table
     let query = conn.query_map(r"SELECT * FROM Semester", |(code, year, description)| {
         Semester {
             code,
@@ -538,9 +605,11 @@ fn list_semesters(conn: &mut PooledConn) -> Result<()> {
             description,
         }
     })?;
+    // Print out header for table
     println!("+------+------+--------+");
     println!("| Code | Year | Desc   |");
     println!("+------+------+--------+");
+    // Iterate through rows from query and print out styled table
     for item in query.iter() {
         println!("| {:<4} | {:>4} | {:<6} |", item.code, item.year, item.description);
     }
@@ -549,14 +618,17 @@ fn list_semesters(conn: &mut PooledConn) -> Result<()> {
 }
 
 fn list_students(conn: &mut PooledConn) -> Result<()> {
+    // Select all rows from table
     let query = conn.query_map(r"SELECT * FROM Student", |(lname, fname, phone)| Student {
         lname,
         fname,
         phone,
     })?;
+    // Print out header for table
     println!("+-----------------+-----------------+----------------------+");
     println!("| Last Name       | First Name      | Phone Number         |");
     println!("+-----------------+-----------------+----------------------+");
+    // Iterate through rows from query and print out styled table
     for item in query.iter() {
         println!("| {:<15} | {:<15} | {:>20} |", item.lname, item.fname, item.phone);
     }
@@ -565,6 +637,7 @@ fn list_students(conn: &mut PooledConn) -> Result<()> {
 }
 
 fn list_taken_courses(conn: &mut PooledConn) -> Result<()> {
+    // Select all rows from table
     let query = conn.query_map(
         r"SELECT * FROM TakenCourse",
         |(
@@ -585,9 +658,11 @@ fn list_taken_courses(conn: &mut PooledConn) -> Result<()> {
             }
         },
     )?;
+    // Print out header for table
     println!("+-----------------+-----------------+--------+--------+------+------+");
     println!("| Last Name       | First Name      | Prefix | Number | Type | Code |");
     println!("+-----------------+-----------------+--------+--------+------+------+");
+    // Iterate through rows from query and print out styled table
     for item in query.iter() {
         println!(
             "| {:<15} | {:<15} | {:<6} | {:>6} | {:<4} | {:<4} |",
@@ -603,9 +678,11 @@ fn list_taken_courses(conn: &mut PooledConn) -> Result<()> {
     Ok(())
 }
 // End list functions
+
 pub fn transcript(conn: &mut PooledConn, input: Vec<&str>) -> Result<()> {
     print_transcript(conn, 
         Student {
+            // Check if user actually entered something
             lname: match input.get(1) {
                 Some(item) => item.to_string(),
                 None => return Err(mysql::Error::IoError(Error::new(
@@ -613,6 +690,7 @@ pub fn transcript(conn: &mut PooledConn, input: Vec<&str>) -> Result<()> {
                         "Error: Unable to print transcript. No student supplied.\n",
                     )))
             },
+            // Check if user actually entered something
             fname: match input.get(2) {
                 Some(item) => item.to_string(),
                 None => return Err(mysql::Error::IoError(Error::new(
@@ -628,8 +706,13 @@ pub fn transcript(conn: &mut PooledConn, input: Vec<&str>) -> Result<()> {
 
 fn print_transcript(conn: &mut PooledConn, student: Student) -> Result<()> {
     let stmt = conn.prep(
-        r"SELECT * FROM TakenCourse
-        WHERE TakenCourse.StudentLName = ? AND TakenCourse.StudentFName = ?"
+        r"SELECT Semester.Description, Semester.Year, Course.Prefix, Course.Number, 
+        Course.Title, Course.Credits, Grade.Letter, Grade.Value
+        FROM TakenCourse, Semester, Course, Grade
+        WHERE TakenCourse.StudentLName = ? AND TakenCourse.StudentFName = ? 
+        AND TakenCourse.CoursePrefix = Course.Prefix AND TakenCourse.CourseNumber = Course.Number 
+        AND TakenCourse.GradeLetter = Grade.Letter AND TakenCourse.SemesterCode = Semester.Code
+        GROUP BY Semester.Code"
     )?;
     let taken_courses = conn.exec_map(stmt, 
         (&student.lname, &student.fname), 
